@@ -1,0 +1,11 @@
+{
+	"dependencies": {
+		"@dimforge/rapier3d": "^0.11.2",
+		"ogl": "^1.0.3"
+	},
+	"devDependencies": {
+		"esbuild": "^0.19.9",
+		"esbuild-plugin-glsl": "^1.2.2",
+		"esbuild-plugin-wasm": "^1.1.0"
+	}
+}
