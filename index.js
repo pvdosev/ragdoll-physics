@@ -5,6 +5,7 @@ import { Physics } from './physics.js';
 import { makeButtonInList } from './ui.js';
 import vertShader from './shaders/main.vert';
 import fragShader from './shaders/main.frag';
+import * as RAPIER from '@dimforge/rapier3d';
 
 function shallowClone(obj) {
     return Object.create(Object.getPrototypeOf(obj), Object.getOwnPropertyDescriptors(obj));
@@ -13,7 +14,7 @@ function shallowClone(obj) {
 function init() {
     // Initialize graphics
     const canvasElem = document.querySelector("#renderCanvas");
-    const renderer = new Renderer({ dpr: 1, canvas: canvasElem });
+    const renderer = new Renderer({ dpr: 1, canvas: canvasElem, antialias: true });
     const gl = renderer.gl;
 
     // Orbit camera & window resize helper
@@ -58,15 +59,50 @@ function init() {
         },
     });
 
+    const sphereGeom = new Sphere(gl);
+    const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic().setTranslation(0.0, 1.0, 0.0);
+    function makeBall(position) {
+        const ball = {}
+        ball.mesh = new Mesh(gl, {geometry: sphereGeom, program});
+        ball.mesh.setParent(scene);
+        ball.body = physics.world.createRigidBody(rigidBodyDesc);
+        ball.coll = physics.world.createCollider(RAPIER.ColliderDesc.ball(0.5), ball.body);
+        physics.bodyToTransform.set(ball.body.handle, ball.mesh);
+        ball.body.setTranslation(position, true);
+        return ball;
+    }
     // Initialize scene
     const scene = new Transform();
     const skybox = new SkyBox(gl);
     skybox.setParent(scene);
 
-    const sphereGeom = new Sphere(gl);
     const ball = {mesh: new Mesh(gl, {geometry: sphereGeom, program})};
-    console.log(ball, sphereGeom);
     ball.mesh.setParent(scene);
+
+    ball.body = physics.world.createRigidBody(rigidBodyDesc);
+    ball.coll = physics.world.createCollider(RAPIER.ColliderDesc.ball(0.5), ball.body);
+    physics.bodyToTransform.set(ball.body.handle, ball.mesh);
+    const balls = [];
+
+    canvasElem.addEventListener('pointerdown', (e) => {
+        const clipSpaceX = 2.0 * (e.x / renderer.width) - 1.0;
+        const clipSpaceY =  2.0 * (1.0 - e.y / renderer.height) - 1.0;
+        const direction = new Vec3(clipSpaceX, clipSpaceY, 0.5);
+        camera.unproject(direction);
+        direction.sub(camera.position).normalize();
+        // it is COMPLETELY ACCIDENTAL that ogl Vec3's work inside Rapier
+        const ray = new RAPIER.Ray(camera.position, direction);
+        const hit = physics.world.castRayAndGetNormal(ray, 100, false);
+        if (hit != null) {
+            const hitPoint = ray.pointAt(hit.toi);
+            // to use Rapier vectors in ogl they need to be initialized with the ogl math classes
+            const hitVec = new Vec3(hitPoint.x, hitPoint.y, hitPoint.z);
+            const normal = new Vec3(hit.normal.x, hit.normal.y, hit.normal.z);
+            hitVec.add(normal.scale(0.5));
+            balls.push(makeBall(hitVec));
+            console.log(hitVec);
+        }
+    } );
 
     // Add Pause Button
     let paused = false;

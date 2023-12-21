@@ -1,6 +1,6 @@
 #version 300 es
 in vec3 position;
-in vec4 color;
+//in vec4 color;
 in vec3 normal;
 //in vec2 uv;
 uniform vec3 cameraPosition;
@@ -12,7 +12,7 @@ uniform mat3 normalMatrix;
 uniform mat4 projectionMatrix;
 
 //out vec2 vUV;
-out vec4 vColor;
+//out vec4 vColor;
 out vec3 vNormal;
 out vec3 vSurfaceToLight[3];
 out vec3 vSurfaceToCamera;
@@ -24,7 +24,7 @@ void main() {
     }
     vSurfaceToCamera = cameraPosition - surfaceWorldPosition;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    vColor = color;
+    //vColor = color;
     vNormal = mat3(modelMatrix) * normal;
     //v_uv = uv;
 }

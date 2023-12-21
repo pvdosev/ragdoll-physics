@@ -21,5 +21,5 @@ void main() {
     for (int i = 0; i < 3; ++i) {
         lightTotal = lightTotal + clamp(dot(normalize(vSurfaceToLight[i]), normal), 0.0, 1.0) * lightColor[i];
     }
-    outColor = vec4(unlit() + lightTotal, 1.0);
+    outColor = vec4((lightTotal/2.) + 0.5, 1.0);
 }
