@@ -1,10 +1,13 @@
-import { Renderer, Camera, Transform, Orbit, Program, Sphere, Mesh, Vec3 } from 'ogl';
+import { Renderer, Camera, Transform, Orbit, Program,
+         Sphere, Mesh, Vec3, GLTFLoader, GLTFSkin, TextureLoader} from 'ogl';
 import { SkyBox } from './skybox.js';
 import { MessageBus } from './abstract.js';
 import { Physics } from './physics.js';
 import { makeButtonInList } from './ui.js';
 import vertShader from './shaders/main.vert';
 import fragShader from './shaders/main.frag';
+import skinVert from './shaders/skin.vert';
+import skinFrag from './shaders/skin.frag';
 import * as RAPIER from '@dimforge/rapier3d';
 
 function shallowClone(obj) {
@@ -59,6 +62,19 @@ function init() {
         },
     });
 
+    function makeSkinProgram (skin) {
+        const texture = TextureLoader.load(gl, { src: 'sosij.png'});
+        return skinProgram = new Program(gl, {
+            vertex: skinVert,
+            fragment: skinFrag,
+            uniforms: {
+                boneTexture: skin.boneTexture,
+                boneTextureSize: skin.boneTextureSize,
+                tMap: texture,
+            }
+        });
+    }
+
     const sphereGeom = new Sphere(gl);
     const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic().setTranslation(0.0, 1.0, 0.0);
     function makeBall(position) {
@@ -103,6 +119,28 @@ function init() {
             console.log(hitVec);
         }
     } );
+
+    //loadAssets();
+    async function loadAssets() {
+        const gltf = await GLTFLoader.load(gl, `sausage.glb`);
+        console.log(gltf);
+        const s = gltf.scene || gltf.scenes[0];
+        s.forEach((root) => {
+            root.traverse((node) => {
+                //if (node.geometry && node.extras.asset_id) { assets.items[node.extras.asset_id] = node }
+                //if (node.extras.wall_id) { assets.walls[node.extras.wall_id] = node }
+                console.log(node);
+                if (node.name === "sausage_skel") {
+                    node.setParent(scene);
+                }
+                if (node.program) {
+                    const material = node.program.gltfMaterial || {};
+                    if (node instanceof GLTFSkin) node.program = makeSkinProgram(node);
+                    else node.program = program;
+                }
+            });
+        });
+    }
 
     // Add Pause Button
     let paused = false;
