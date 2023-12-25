@@ -63,14 +63,15 @@ function init() {
     });
 
     function makeSkinProgram (skin) {
-        const texture = TextureLoader.load(gl, { src: 'sosij.png'});
-        return skinProgram = new Program(gl, {
+        const material = skin.program.gltfMaterial;
+        console.log("skin: ", skin);
+        return new Program(gl, {
             vertex: skinVert,
             fragment: skinFrag,
             uniforms: {
-                boneTexture: skin.boneTexture,
-                boneTextureSize: skin.boneTextureSize,
-                tMap: texture,
+                boneTexture:{ value: skin.boneTexture },
+                boneTextureSize: { value: skin.boneTextureSize },
+                tMap: { value: material.baseColorTexture.texture },
             }
         });
     }
@@ -92,12 +93,6 @@ function init() {
     const skybox = new SkyBox(gl);
     skybox.setParent(scene);
 
-    const ball = {mesh: new Mesh(gl, {geometry: sphereGeom, program})};
-    ball.mesh.setParent(scene);
-
-    ball.body = physics.world.createRigidBody(rigidBodyDesc);
-    ball.coll = physics.world.createCollider(RAPIER.ColliderDesc.ball(0.5), ball.body);
-    physics.bodyToTransform.set(ball.body.handle, ball.mesh);
     const balls = [];
 
     canvasElem.addEventListener('pointerdown', (e) => {
@@ -120,7 +115,7 @@ function init() {
         }
     } );
 
-    //loadAssets();
+    loadAssets();
     async function loadAssets() {
         const gltf = await GLTFLoader.load(gl, `sausage.glb`);
         console.log(gltf);
