@@ -1,4 +1,4 @@
-import { Renderer, Camera, Transform, Orbit, Program,
+import { Renderer, Camera, Transform, Orbit, Program, Geometry,
          Sphere, Mesh, Vec3, GLTFLoader, GLTFSkin, TextureLoader} from 'ogl';
 import { SkyBox } from './skybox.js';
 import { MessageBus } from './abstract.js';
@@ -8,6 +8,8 @@ import vertShader from './shaders/main.vert';
 import fragShader from './shaders/main.frag';
 import skinVert from './shaders/skin.vert';
 import skinFrag from './shaders/skin.frag';
+import physDebugVert from './shaders/physDebug.vert';
+import physDebugFrag from './shaders/physDebug.frag';
 import * as RAPIER from '@dimforge/rapier3d';
 
 function shallowClone(obj) {
@@ -49,7 +51,7 @@ function init() {
     const lightPenumbra = [];
     const lightUmbra = [];
 
-    const program = new Program(gl, {
+    const mainProgram = new Program(gl, {
         vertex: vertShader,
         fragment: fragShader,
         uniforms: {
@@ -80,7 +82,7 @@ function init() {
     const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic().setTranslation(0.0, 1.0, 0.0);
     function makeBall(position) {
         const ball = {}
-        ball.mesh = new Mesh(gl, {geometry: sphereGeom, program});
+        ball.mesh = new Mesh(gl, {geometry: sphereGeom, program: mainProgram});
         ball.mesh.setParent(scene);
         ball.body = physics.world.createRigidBody(rigidBodyDesc);
         ball.coll = physics.world.createCollider(RAPIER.ColliderDesc.ball(0.5), ball.body);
@@ -111,10 +113,36 @@ function init() {
             const normal = new Vec3(hit.normal.x, hit.normal.y, hit.normal.z);
             hitVec.add(normal.scale(0.5));
             balls.push(makeBall(hitVec));
-            console.log(hitVec);
         }
     } );
 
+    // Setting up physics debug rendering
+    const debugProgram = new Program(gl, {
+        vertex: physDebugVert,
+        fragment: physDebugFrag,
+    });
+    debugProgram.name = "debug";
+
+    const debugRenderData = physics.world.debugRender();
+    const debugAttrs = {
+        position: {
+            size: 3,
+            usage: gl.STREAM_DRAW,
+            data: debugRenderData.vertices,
+        },
+        color: {
+            size: 4,
+            usage: gl.STREAM_DRAW,
+            data: debugRenderData.colors,
+        },
+    };
+    const physGeometry = new Geometry(gl, debugAttrs);
+
+    const debugMesh = new Mesh(gl, {geometry: physGeometry, program: debugProgram, mode: gl.LINES});
+    debugMesh.setParent(scene);
+
+    // Load sausage
+    let skin;
     loadAssets();
     async function loadAssets() {
         const gltf = await GLTFLoader.load(gl, `sausage.glb`);
@@ -122,20 +150,22 @@ function init() {
         const s = gltf.scene || gltf.scenes[0];
         s.forEach((root) => {
             root.traverse((node) => {
-                //if (node.geometry && node.extras.asset_id) { assets.items[node.extras.asset_id] = node }
-                //if (node.extras.wall_id) { assets.walls[node.extras.wall_id] = node }
-                console.log(node);
-                if (node.name === "sausage_skel") {
-                    node.setParent(scene);
-                }
+                if (node.name === "sausage_skel") node.setParent(scene);
                 if (node.program) {
-                    const material = node.program.gltfMaterial || {};
-                    if (node instanceof GLTFSkin) node.program = makeSkinProgram(node);
-                    else node.program = program;
+                    if (node instanceof GLTFSkin) {
+                        node.program = makeSkinProgram(node);
+                        skin = node;
+                    }
+                    else node.program = mainProgram;
                 }
             });
         });
+        console.log("scene: ", scene);
     }
+
+    // Physics sausage
+    const sausage_segment = new Capsule(0.5, 1);
+
 
     // Add Pause Button
     let paused = false;
@@ -152,12 +182,46 @@ function init() {
     })
 
     // Main Loop
+    let startTime, lastTime, newBuf;
+    let debugBufLen = debugRenderData.vertices.length;
+
     requestID = requestAnimationFrame(update);
-    function update() {
-        requestID = requestAnimationFrame(update);
+    function update(time) {
+        if (startTime === undefined) {
+            startTime = time;
+        }
+        const totalTime = time - startTime;
+        if (skin) {
+            for (const bone of skin.skeleton.joints) {
+                bone.position.y = Math.sin((totalTime) / 1000 + bone.position.x * 2);
+            }
+        }
         physics.update();
+
+        // update buffers for physics collider rendering
+        newBuf = physics.world.debugRender();
+        debugAttrs.position.data = newBuf.vertices;
+        debugAttrs.color.data = newBuf.colors;
+        if (newBuf.vertices.length !== debugBufLen) {
+            if (newBuf.vertices.length > debugBufLen) {
+                gl.bindBuffer(gl.ARRAY_BUFFER, debugAttrs.position.buffer);
+                gl.bufferData(gl.ARRAY_BUFFER, newBuf.vertices, gl.STREAM_DRAW);
+                gl.bindBuffer(gl.ARRAY_BUFFER, debugAttrs.color.buffer);
+                gl.bufferData(gl.ARRAY_BUFFER, newBuf.colors, gl.STREAM_DRAW);
+                gl.renderer.state.boundBuffer = debugAttrs.color.buffer;
+            }
+            debugAttrs.position.count = newBuf.vertices.length / 3;
+            debugAttrs.color.count = newBuf.colors.length / 4;
+            physGeometry.drawRange.count = newBuf.vertices.length / 3;
+        }
+        debugBufLen = newBuf.vertices.length;
+        physGeometry.updateAttribute(debugAttrs.position);
+        physGeometry.updateAttribute(debugAttrs.color);
+
         controls.update();
         renderer.render({ scene, camera, sort: false, frustumCull: false });
+
+        requestID = requestAnimationFrame(update);
     }
 }
 
