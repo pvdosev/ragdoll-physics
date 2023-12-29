@@ -79,7 +79,7 @@ function init() {
     }
 
     const sphereGeom = new Sphere(gl);
-    const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic().setTranslation(0.0, 1.0, 0.0);
+    const rigidBodyDesc = new RAPIER.RigidBodyDesc(RAPIER.RigidBodyType.Dynamic).setTranslation(0.0, 1.0, 0.0);
     function makeBall(position) {
         const ball = {}
         ball.mesh = new Mesh(gl, {geometry: sphereGeom, program: mainProgram});
@@ -141,7 +141,36 @@ function init() {
     const debugMesh = new Mesh(gl, {geometry: physGeometry, program: debugProgram, mode: gl.LINES});
     debugMesh.setParent(scene);
 
-    // Load sausage
+    // Physics sausage
+    function makeCapsule(x, y, z, length, radius) {
+        const collDesc = new RAPIER.ColliderDesc(new RAPIER.Capsule(length, radius));
+        const bodyDesc = new RAPIER.RigidBodyDesc(RAPIER.RigidBodyType.Dynamic).setTranslation(x, y, z);
+        const body = physics.world.createRigidBody(bodyDesc);
+        return {
+            body: body,
+            coll: physics.world.createCollider(collDesc, body),
+        };
+    }
+
+    function makeJoint(anchor1, anchor2, body1, body2) {
+        const params = RAPIER.JointData.spherical(anchor1, anchor2);
+        const joint = physics.world.createImpulseJoint(params, body1, body2, true);
+        joint.setContactsEnabled(false);
+        return joint;
+    }
+
+    const sausage = [
+        makeCapsule(0, 9 + 3, 0, 0.3, 2.15),
+        makeCapsule(0, 6 + 3, 0, 0.3, 2.15),
+        makeCapsule(0, 3 + 3, 0, 0.3, 2.15),
+        makeCapsule(0, 0 + 3, 0, 0.3, 2.15),
+    ]
+
+    makeJoint({x: 0, y: 1.5, z: 0}, {x: 0, y: -1.5, z: 0}, sausage[0].body, sausage[1].body);
+    makeJoint({x: 0, y: 1.5, z: 0}, {x: 0, y: -1.5, z: 0}, sausage[1].body, sausage[2].body);
+    makeJoint({x: 0, y: 1.5, z: 0}, {x: 0, y: -1.5, z: 0}, sausage[2].body, sausage[3].body);
+
+    // Graphics sausage
     let skin;
     loadAssets();
     async function loadAssets() {
@@ -160,12 +189,14 @@ function init() {
                 }
             });
         });
+
+        for (let i = 0; i<4; i++) {
+            const boneWidget = new Mesh(gl, {geometry: sphereGeom, program: mainProgram});
+            boneWidget.setParent(skin.skeleton.joints[i]);
+            physics.bodyToTransform.set(sausage[i].body.handle, skin.skeleton.joints[i]);
+        }
         console.log("scene: ", scene);
     }
-
-    // Physics sausage
-    const sausage_segment = new Capsule(0.5, 1);
-
 
     // Add Pause Button
     let paused = false;
@@ -191,14 +222,14 @@ function init() {
             startTime = time;
         }
         const totalTime = time - startTime;
-        if (skin) {
-            for (const bone of skin.skeleton.joints) {
-                bone.position.y = Math.sin((totalTime) / 1000 + bone.position.x * 2);
-            }
-        }
+        // if (skin) {
+        //     for (const bone of skin.skeleton.joints) {
+        //         bone.position.y = Math.sin((totalTime) / 1000 + bone.position.x * 2);
+        //     }
+        // }
         physics.update();
 
-        // update buffers for physics collider rendering
+        //update buffers for physics collider rendering
         newBuf = physics.world.debugRender();
         debugAttrs.position.data = newBuf.vertices;
         debugAttrs.color.data = newBuf.colors;
@@ -219,6 +250,10 @@ function init() {
         physGeometry.updateAttribute(debugAttrs.color);
 
         controls.update();
+
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         renderer.render({ scene, camera, sort: false, frustumCull: false });
 
         requestID = requestAnimationFrame(update);
