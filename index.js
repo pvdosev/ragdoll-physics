@@ -1,6 +1,7 @@
 import { Renderer, Camera, Transform, Orbit, Program, Geometry,
          Sphere, Mesh, Vec3, GLTFLoader, GLTFSkin, TextureLoader} from 'ogl';
 import { SkyBox } from './skybox.js';
+import { PhysDebugMesh } from './physdebug.js';
 import { MessageBus } from './abstract.js';
 import { Physics } from './physics.js';
 import { makeButtonInList } from './ui.js';
@@ -95,51 +96,8 @@ function init() {
     const skybox = new SkyBox(gl);
     skybox.setParent(scene);
 
-    const balls = [];
-
-    canvasElem.addEventListener('pointerdown', (e) => {
-        const clipSpaceX = 2.0 * (e.x / renderer.width) - 1.0;
-        const clipSpaceY =  2.0 * (1.0 - e.y / renderer.height) - 1.0;
-        const direction = new Vec3(clipSpaceX, clipSpaceY, 0.5);
-        camera.unproject(direction);
-        direction.sub(camera.position).normalize();
-        // it is COMPLETELY ACCIDENTAL that ogl Vec3's work inside Rapier
-        const ray = new RAPIER.Ray(camera.position, direction);
-        const hit = physics.world.castRayAndGetNormal(ray, 100, false);
-        if (hit != null) {
-            const hitPoint = ray.pointAt(hit.toi);
-            // to use Rapier vectors in ogl they need to be initialized with the ogl math classes
-            const hitVec = new Vec3(hitPoint.x, hitPoint.y, hitPoint.z);
-            const normal = new Vec3(hit.normal.x, hit.normal.y, hit.normal.z);
-            hitVec.add(normal.scale(0.5));
-            balls.push(makeBall(hitVec));
-        }
-    } );
-
     // Setting up physics debug rendering
-    const debugProgram = new Program(gl, {
-        vertex: physDebugVert,
-        fragment: physDebugFrag,
-    });
-    debugProgram.name = "debug";
-
-    const debugRenderData = physics.world.debugRender();
-    const debugAttrs = {
-        position: {
-            size: 3,
-            usage: gl.STREAM_DRAW,
-            data: debugRenderData.vertices,
-        },
-        color: {
-            size: 4,
-            usage: gl.STREAM_DRAW,
-            data: debugRenderData.colors,
-        },
-    };
-    const physGeometry = new Geometry(gl, debugAttrs);
-
-    const debugMesh = new Mesh(gl, {geometry: physGeometry, program: debugProgram, mode: gl.LINES});
-    debugMesh.setParent(scene);
+    const debugMesh = new PhysDebugMesh(gl, physics.world, scene);
 
     // Physics sausage
     function makeCapsule(x, y, z, length, radius) {
@@ -159,17 +117,6 @@ function init() {
         return joint;
     }
 
-    const sausage = [
-        makeCapsule(0, 9 + 3, 0, 0.3, 2.15),
-        makeCapsule(0, 6 + 3, 0, 0.3, 2.15),
-        makeCapsule(0, 3 + 3, 0, 0.3, 2.15),
-        makeCapsule(0, 0 + 3, 0, 0.3, 2.15),
-    ]
-
-    makeJoint({x: 0, y: 1.5, z: 0}, {x: 0, y: -1.5, z: 0}, sausage[0].body, sausage[1].body);
-    makeJoint({x: 0, y: 1.5, z: 0}, {x: 0, y: -1.5, z: 0}, sausage[1].body, sausage[2].body);
-    makeJoint({x: 0, y: 1.5, z: 0}, {x: 0, y: -1.5, z: 0}, sausage[2].body, sausage[3].body);
-
     // Graphics sausage
     let skin;
     loadAssets();
@@ -179,7 +126,6 @@ function init() {
         const s = gltf.scene || gltf.scenes[0];
         s.forEach((root) => {
             root.traverse((node) => {
-                if (node.name === "sausage_skel") node.setParent(scene);
                 if (node.program) {
                     if (node instanceof GLTFSkin) {
                         node.program = makeSkinProgram(node);
@@ -189,14 +135,69 @@ function init() {
                 }
             });
         });
-
-        for (let i = 0; i<4; i++) {
-            const boneWidget = new Mesh(gl, {geometry: sphereGeom, program: mainProgram});
-            boneWidget.setParent(skin.skeleton.joints[i]);
-            physics.bodyToTransform.set(sausage[i].body.handle, skin.skeleton.joints[i]);
-        }
-        console.log("scene: ", scene);
     }
+
+    function makeSausage(position) {
+        // this is almost a generic skin cloner
+        const sausageParent = new Transform();
+        const newSkel = {
+            joints: [],
+            inverseBindMatrices: shallowClone(skin.skeleton.inverseBindMatrices),
+        }
+        for (const bone of skin.skeleton.joints) {
+            const newBone = new Transform();
+            newBone.matrix.copy(bone.matrix);
+            newBone.decompose(); // eww, rotten bones in my sausage!
+            newBone.scale.set(0.1);
+            newBone.bindInverse = shallowClone(bone.bindInverse);
+            newBone.setParent(sausageParent);
+            newSkel.joints.push(newBone);
+        }
+
+        const newSkin = new GLTFSkin(gl, {
+            skeleton: newSkel,
+            program: skin.program,
+            geometry: skin.geometry,
+        });
+        newSkin.setParent(sausageParent);
+        console.log(newSkin, newSkel);
+
+        sausageParent.setParent(scene);
+        const s1 = makeCapsule(position.x, position.y + 0.9, position.z, 0.03, 0.215);
+        const s2 = makeCapsule(position.x, position.y + 0.6, position.z, 0.03, 0.215);
+        const s3 = makeCapsule(position.x, position.y + 0.3, position.z, 0.03, 0.215);
+        const s4 = makeCapsule(position.x, position.y, position.z, 0.03, 0.215);
+        physics.bodyToTransform.set(s1.body.handle, newSkel.joints[0]);
+        physics.bodyToTransform.set(s2.body.handle, newSkel.joints[1]);
+        physics.bodyToTransform.set(s3.body.handle, newSkel.joints[2]);
+        physics.bodyToTransform.set(s4.body.handle, newSkel.joints[3]);
+
+        makeJoint({x: 0, y: 0.15, z: 0}, {x: 0, y: -0.15, z: 0}, s1.body, s2.body);
+        makeJoint({x: 0, y: 0.15, z: 0}, {x: 0, y: -0.15, z: 0}, s2.body, s3.body);
+        makeJoint({x: 0, y: 0.15, z: 0}, {x: 0, y: -0.15, z: 0}, s3.body, s4.body);
+
+        return sausageParent;
+    }
+
+    const balls = [];
+    canvasElem.addEventListener('pointerdown', (e) => {
+        const clipSpaceX = 2.0 * (e.x / renderer.width) - 1.0;
+        const clipSpaceY =  2.0 * (1.0 - e.y / renderer.height) - 1.0;
+        const direction = new Vec3(clipSpaceX, clipSpaceY, 0.5);
+        camera.unproject(direction);
+        direction.sub(camera.position).normalize();
+        //it is COMPLETELY ACCIDENTAL that ogl Vec3's work inside Rapier
+        const ray = new RAPIER.Ray(camera.position, direction);
+        const hit = physics.world.castRayAndGetNormal(ray, 100, false);
+        if (hit != null) {
+            const hitPoint = ray.pointAt(hit.toi);
+            //to use Rapier vectors in ogl they need to be initialized with the ogl math classes
+            const hitVec = new Vec3(hitPoint.x, hitPoint.y, hitPoint.z);
+            const normal = new Vec3(hit.normal.x, hit.normal.y, hit.normal.z);
+            hitVec.add(normal.scale(0.5));
+            balls.push(makeSausage(hitVec));
+        }
+    } );
 
     // Add Pause Button
     let paused = false;
@@ -210,11 +211,13 @@ function init() {
             cancelAnimationFrame(requestID);
             paused = true;
         }
+    });
+    makeButtonInList("Show/Hide Colliders", "buttonList", () => {
+        debugMesh.toggle();
     })
 
     // Main Loop
-    let startTime, lastTime, newBuf;
-    let debugBufLen = debugRenderData.vertices.length;
+    let startTime, lastTime;
 
     requestID = requestAnimationFrame(update);
     function update(time) {
@@ -230,30 +233,10 @@ function init() {
         physics.update();
 
         //update buffers for physics collider rendering
-        newBuf = physics.world.debugRender();
-        debugAttrs.position.data = newBuf.vertices;
-        debugAttrs.color.data = newBuf.colors;
-        if (newBuf.vertices.length !== debugBufLen) {
-            if (newBuf.vertices.length > debugBufLen) {
-                gl.bindBuffer(gl.ARRAY_BUFFER, debugAttrs.position.buffer);
-                gl.bufferData(gl.ARRAY_BUFFER, newBuf.vertices, gl.STREAM_DRAW);
-                gl.bindBuffer(gl.ARRAY_BUFFER, debugAttrs.color.buffer);
-                gl.bufferData(gl.ARRAY_BUFFER, newBuf.colors, gl.STREAM_DRAW);
-                gl.renderer.state.boundBuffer = debugAttrs.color.buffer;
-            }
-            debugAttrs.position.count = newBuf.vertices.length / 3;
-            debugAttrs.color.count = newBuf.colors.length / 4;
-            physGeometry.drawRange.count = newBuf.vertices.length / 3;
-        }
-        debugBufLen = newBuf.vertices.length;
-        physGeometry.updateAttribute(debugAttrs.position);
-        physGeometry.updateAttribute(debugAttrs.color);
+        if (debugMesh.enabled) debugMesh.updateBuffers();
 
         controls.update();
 
-        gl.disable(gl.DEPTH_TEST);
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         renderer.render({ scene, camera, sort: false, frustumCull: false });
 
         requestID = requestAnimationFrame(update);

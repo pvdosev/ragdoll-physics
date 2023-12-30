@@ -18,5 +18,5 @@ void main() {
     // outColor.rgb = tex + shading;
     // outColor.a = 1.0;
     outColor.rgb = texture(tMap, vUv).rgb;
-    outColor.a = 0.2;
+    outColor.a = 1.0;
 }
