@@ -102,7 +102,8 @@ function init() {
     // Physics sausage
     function makeCapsule(x, y, z, length, radius) {
         const collDesc = new RAPIER.ColliderDesc(new RAPIER.Capsule(length, radius));
-        const bodyDesc = new RAPIER.RigidBodyDesc(RAPIER.RigidBodyType.Dynamic).setTranslation(x, y, z);
+        const bodyDesc = new RAPIER.RigidBodyDesc(RAPIER.RigidBodyType.Dynamic)
+                                   .setTranslation(x + Math.random() / 100, y + Math.random() / 100, z + Math.random() / 100);
         const body = physics.world.createRigidBody(bodyDesc);
         return {
             body: body,
@@ -111,7 +112,13 @@ function init() {
     }
 
     function makeJoint(anchor1, anchor2, body1, body2) {
-        const params = RAPIER.JointData.spherical(anchor1, anchor2);
+        const params = RAPIER.JointData.generic(anchor1, anchor2,
+                                                {x: 0, y: 0, z: 1},
+                                                RAPIER.JointAxesMask.X |
+                                                RAPIER.JointAxesMask.Y |
+                                                RAPIER.JointAxesMask.Z |
+                                                RAPIER.JointAxesMask.AngZ
+                                               );
         const joint = physics.world.createImpulseJoint(params, body1, body2, true);
         joint.setContactsEnabled(false);
         return joint;
@@ -199,6 +206,22 @@ function init() {
         }
     } );
 
+    // Generic joint test
+    // const Axes = RAPIER.JointAxesMask;
+    // const collDescG1 = new RAPIER.ColliderDesc(new RAPIER.Cone(0.5, 0.5));
+    // const bodyDescG1 = new RAPIER.RigidBodyDesc(RAPIER.RigidBodyType.Dynamic).setTranslation(1, 1, 1);
+    // const bodyDescG2 = new RAPIER.RigidBodyDesc(RAPIER.RigidBodyType.Dynamic).setTranslation(1.5, 1.5, 1.5);
+    // const bodyG1 = physics.world.createRigidBody(bodyDescG1);
+    // const bodyG2 = physics.world.createRigidBody(bodyDescG2);
+    // const collG1 = physics.world.createCollider(collDescG1, bodyG1);
+    // const collG2 = physics.world.createCollider(collDescG1, bodyG2);
+    // const genParams = RAPIER.JointData.generic(
+    //     {x: 0, y: 0.5, z: 0},
+    //     {x: 0, y: -0.5, z: 0},
+    //     {x: 1, y: 0, z: 0},
+    //     Axes.X | Axes.Y | Axes.Z | Axes.AngX);
+    // const genJoint = physics.world.createImpulseJoint(genParams, bodyG1, bodyG2, true);
+
     // Add Pause Button
     let paused = false;
     let requestID;
@@ -230,6 +253,9 @@ function init() {
         //         bone.position.y = Math.sin((totalTime) / 1000 + bone.position.x * 2);
         //     }
         // }
+
+        //physics.world.timestep = time - lastTime;
+        //lastTime = time;
         physics.update();
 
         //update buffers for physics collider rendering

@@ -7,7 +7,7 @@ import { wasmLoader as wasm } from "esbuild-plugin-wasm";
 
 const args = new Set(process.argv.slice(2));
 if (args.has("-h") || args.has("--help")) {
-  console.log(`USAGE: ./build.mjs [-s]
+  console.log(`USAGE: ./build.mjs [-w]
 A small build script for this project!
 
   -w, --watch          Instead of building once, invoke the esbuild file watcher.

@@ -1,6 +1,6 @@
 import physDebugVert from './shaders/physDebug.vert';
 import physDebugFrag from './shaders/physDebug.frag';
-import { Program, Mesh, Geometry} from 'ogl';
+import { Program, Mesh, Geometry } from 'ogl';
 
 export class PhysDebugMesh extends Mesh {
   constructor(gl, world, scene) {
@@ -29,7 +29,8 @@ export class PhysDebugMesh extends Mesh {
     this.bufLen = renderData.vertices.length;
     this.gl = gl;
     this.scene = scene;
-    this.enabled = false;
+    this.enabled = true;
+    this.setParent(this.scene);
   }
 
   updateBuffers() {
